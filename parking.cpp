@@ -42,7 +42,7 @@ public:
            int s, Vehicle v) : id(i), floor_no(f), slot_no(s), vehicle(v)
     {
     }
-    string getId() const { return id + "_" + to_string(floor_no) + to_string(slot_no); }
+    string getId() const { return id + "_" + to_string(floor_no) + "_" + to_string(slot_no); }
 
     Vehicle getVehicle() const { return vehicle; }
 
@@ -92,8 +92,10 @@ public:
 
         if (number_of_slots > 1)
             slots.push_back(new ParkingSlot(id_, BIKE, 2));
-        int count = 3;
-        while (number_of_slots > 2)
+        if (number_of_slots > 2)
+            slots.push_back(new ParkingSlot(id_, BIKE, 3));
+        int count = 4;
+        while (number_of_slots > 3)
         {
             slots.push_back(new ParkingSlot(id_, CAR, count));
             number_of_slots--;
@@ -148,7 +150,7 @@ class ParkingLot
     string id;
     static ParkingLot *instance;
     vector<Floor *> floorList;
-    vector<Ticket *> tickets;
+    unordered_map<string,Ticket*>tickets;
 
     ParkingLot(int fs, int ns, string i) : id(i)
     {
@@ -177,10 +179,29 @@ public:
 
     void addNewTicket(Ticket *tk)
     {
-        tickets.push_back(tk);
+        tickets.insert({tk->getId(),tk});
     }
 
-    vector<Ticket *> getTickets() const { return tickets; }
+    void removeTicket(string id){
+        auto it = tickets.find(id);
+        
+        if (it != tickets.end())
+        {
+            int f = it->second->floorNo();
+            int s = it->second->slotNo();
+            instance->getFloorList()[f-1]->getSlots()[s-1]->setOccupied(false);
+            cout << "Unparked vehicle with Registration Number: " << it->second->getVehicle().getRegistrationNumber() << " and Color: " << it->second->getVehicle().getColor() << endl;
+            
+            tickets.erase(it);
+        }
+        else
+        {
+            cout << "Invalid Ticket" << endl;
+        }
+    }
+
+
+    unordered_map<string,Ticket *> getTickets() const { return tickets; }
 };
 
 class CommandPanel
@@ -195,50 +216,34 @@ public:
         map_vehicle_type.insert({"TRUCK", TRUCK});
     }
 
-    void create_parking_lot(string s, int j)
+    void create_parking_lot(stringstream &ss)
     {
-        int count = 0;
-        while (s[j] != ' ')
-            j++;
-        j++;
-        int m = 0;
-        while (s[j] != ' ')
-        {
-            m *= 10;
-            m += s[j] - '0';
-            j++;
-        }
-        j++;
-        int n = 0;
-        while (s[j] != ' ')
-        {
-            n *= 10;
-            n += s[j] - '0';
-            j++;
-        }
-        lot = ParkingLot::getInstance(m, n, "PR1234");
+        string s1;
+        int x, y;
+        ss >> s1 >> x >> y;
+        lot = ParkingLot::getInstance(x, y, s1);
+        cout << "Created parking lot with " << x << " floors and " << y << " slots per floor" << endl;
     }
 
-    void free_slots(int type, int j, string s)
+    void free_slots(int type, string s)
     {
-        string x = s.substr(j + 1);
-        if (map_vehicle_type.find(x) != map_vehicle_type.end())
+        if (map_vehicle_type.find(s) != map_vehicle_type.end())
         {
             for (auto &floor : lot->getFloorList())
             {
                 if (type == 0)
-                    cout << "No. of free slots for " << x << " on Floor " << floor->getId() << ": " << floor->countFreeSlots(map_vehicle_type[x]);
+                    cout << "No. of free slots for " << s << " on Floor " << floor->getId() << ": " << floor->countFreeSlots(map_vehicle_type[s]) << endl;
                 else if (type == 1)
                 {
-                    cout << "Free slots for " << x << " on Floor " << floor->getId() << ": ";
-                    for (auto &slot : floor->getFreeSlots(map_vehicle_type[x]))
+                    cout << "Free slots for " << s << " on Floor " << floor->getId() << ": ";
+                    for (auto &slot : floor->getFreeSlots(map_vehicle_type[s]))
                         cout << slot->getId() << " ";
                     cout << endl;
                 }
                 else
                 {
-                    cout << "Occupied slots for " << x << " on Floor " << floor->getId() << ": ";
-                    for (auto &slot : floor->getOccupiedSlots(map_vehicle_type[x]))
+                    cout << "Occupied slots for " << s << " on Floor " << floor->getId() << ": ";
+                    for (auto &slot : floor->getOccupiedSlots(map_vehicle_type[s]))
                         cout << slot->getId() << " ";
                     cout << endl;
                 }
@@ -247,17 +252,17 @@ public:
         else
             throw invalid_argument("Invalid Vehicle type.");
     }
-    void display(string s, int j)
+    void display(stringstream &ss)
     {
-        int i = j;
-        while (s[j] != ' ')
-            j++;
-        if (s.substr(i, j) == "free_count")
-            free_slots(0, j, s);
-        else if (s.substr(i + 1, j) == "free_slots")
-            free_slots(1, j, s);
-        else if (s.substr(i + 1, j) == "occupied_slots")
-            free_slots(2, j, s);
+        string s1, s2;
+        ss >> s1 >> s2;
+
+        if (s1 == "free_count")
+            free_slots(0, s2);
+        else if (s1 == "free_slots")
+            free_slots(1, s2);
+        else if (s1 == "occupied_slots")
+            free_slots(2, s2);
         else
             throw invalid_argument("Display command has inavlid argument.");
     }
@@ -265,53 +270,45 @@ public:
     void take_input()
     {
         string s;
-        getline(cin, s);
+
         while (1)
         {
-
+            getline(cin, s);
             if (s == "exit")
                 break;
             else
             {
-                int i = 0;
-                while (s[i] != ' ')
-                    i++;
-                if (s.substr(0, i) == "create_parking_lot")
-                    create_parking_lot(s, i + 1);
-                else if (s.substr(0, i) == "display")
-                    display(s, i + 1);
-                else if (s.substr(0, i) == "park_vehicle")
-                    park(s, i);
-                else if (s.substr(0, i) == "unpark_vehicle")
-                    unpark(s, i);
+                stringstream ss(s);
+                string s1;
+                ss >> s1;
+
+                if (s1 == "create_parking_lot")
+                    create_parking_lot(ss);
+                else if (s1 == "display")
+                    display(ss);
+                else if (s1 == "park_vehicle")
+                    park(ss);
+                else if (s1 == "unpark_vehicle")
+                    unpark(ss);
                 else
                     throw invalid_argument("Invalid input");
             }
         }
     }
 
-    void park(string s, int j)
+    void park(stringstream &ss)
     {
-        int k = j + 1;
-        while (s[k] != ' ')
-            k++;
+        string s1, s2, s3;
+        ss >> s1 >> s2 >> s3;
 
-        string x = s.substr(j + 1, k);
-        int a = ++k;
-        while (s[k] != ' ')
-            k++;
-        string y = s.substr(a, k);
+        Vehicle vehicle(map_vehicle_type[s1], s2, s3);
 
-        string z = s.substr(k + 1);
-
-        Vehicle vehicle(map_vehicle_type[x], y, z);
-
-        if (map_vehicle_type.find(x) != map_vehicle_type.end())
+        if (map_vehicle_type.find(s1) != map_vehicle_type.end())
         {
             ParkingSlot *slot = NULL;
             for (auto &floor : lot->getFloorList())
             {
-                slot = floor->getFirstFreeSlot(map_vehicle_type[x]);
+                slot = floor->getFirstFreeSlot(map_vehicle_type[s1]);
                 if (slot != NULL)
                     break;
             }
@@ -319,10 +316,10 @@ public:
             {
                 slot->setOccupied(true);
 
-                Ticket ticket(lot->getId(), slot->getFloorId(), slot->getId(), vehicle);
-                string tid = ticket.getId();
+                Ticket* ticket=new Ticket(lot->getId(), slot->getFloorId(), slot->getId(), vehicle);
+                string tid = ticket->getId();
                 slot->setTicketId(tid);
-                lot->addNewTicket(&ticket);
+                lot->addNewTicket(ticket);
                 cout << "Parked vehicle. Ticket ID: " << tid << endl;
             }
             else
@@ -331,32 +328,11 @@ public:
         else
             throw invalid_argument("Invalid Vehicle type.");
     }
-    void unpark(string s, int j)
+    void unpark(stringstream &ss)
     {
-        int k = j + 1;
-        while (s[k] != ' ')
-            k++;
-
-        string x = s.substr(j + 1, k);
-        Ticket *tk = NULL;
-
-        for (auto it = lot->getTickets().begin(); it != lot->getTickets().end(); ++it)
-            if ((*it)->getId() == x)
-            {
-                tk = *it;
-                lot->getTickets().erase(it);
-                break;
-            }
-
-        if (tk == NULL)
-            cout << "Invalid Ticket" << endl;
-        else
-        {
-            int f = tk->floorNo();
-            int s = tk->slotNo();
-            lot->getFloorList()[f]->getSlots()[s]->setOccupied(false);
-            cout<<"Unparked vehicle with Registration Number: "<<tk->getVehicle().getRegistrationNumber()<<" and Color: "<<tk->getVehicle().getColor()<<endl;
-        }
+        string s1;
+        ss>>s1;
+        lot->removeTicket(s1);
     }
 };
 
@@ -366,7 +342,7 @@ int main()
 {
     freopen("./input.txt", "r", stdin);
     freopen("./output.txt", "w", stdout);
-    
+
     CommandPanel panel;
     panel.take_input();
     return 0;
