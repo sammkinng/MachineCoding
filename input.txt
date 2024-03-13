@@ -1,0 +1,2 @@
+create_parking_lot PR1234 2 6
+exit
